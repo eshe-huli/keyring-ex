@@ -3,10 +3,11 @@ defmodule Keyring.Application do
   Keyring OTP Application — distributed agent mesh runtime.
 
   Starts the supervision tree:
-  - libcluster for node discovery
+  - libcluster for node discovery (gossip multicast)
   - Horde for distributed process registry & supervision
   - DeltaCrdt for shared cluster state
   - Phoenix.PubSub for event broadcasting
+  - Keyring.ClusterHandler for nodeup/nodedown → CRDT neighbour wiring
   - Keyring.Coordinator for presence & task routing
   - Keyring.Sync for Merkle DAG synchronization
   """
@@ -18,19 +19,18 @@ defmodule Keyring.Application do
     topologies = Application.get_env(:keyring, :cluster_topologies, [])
 
     children = [
-      # Cluster discovery
+      # ── networking ──
       {Cluster.Supervisor, [topologies, [name: Keyring.ClusterSupervisor]]},
 
-      # PubSub for internal event broadcasting
+      # ── pubsub ──
       {Phoenix.PubSub, name: Keyring.PubSub},
 
-      # Distributed process registry (Horde)
+      # ── distributed registry / supervisor ──
       {Horde.Registry, [name: Keyring.Registry, keys: :unique, members: :auto]},
+      {Horde.DynamicSupervisor,
+       [name: Keyring.DynamicSupervisor, strategy: :one_for_one, members: :auto]},
 
-      # Distributed dynamic supervisor (Horde)
-      {Horde.DynamicSupervisor, [name: Keyring.DynamicSupervisor, strategy: :one_for_one, members: :auto]},
-
-      # Shared cluster state via CRDT
+      # ── shared cluster state via CRDT ──
       {DeltaCrdt,
        [
          crdt: DeltaCrdt.AWLWWMap,
@@ -38,10 +38,13 @@ defmodule Keyring.Application do
          on_diffs: {Keyring.Coordinator, :on_state_change, []}
        ]},
 
-      # Coordinator — presence, routing, health
+      # ── cluster topology handler (wires CRDT neighbours on nodeup/nodedown) ──
+      Keyring.ClusterHandler,
+
+      # ── coordinator: presence, routing, health ──
       Keyring.Coordinator,
 
-      # Merkle DAG sync engine
+      # ── merkle DAG sync engine ──
       Keyring.Sync
     ]
 

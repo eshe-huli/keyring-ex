@@ -3,15 +3,17 @@ import Config
 # Keyring mesh runtime configuration
 
 # libcluster topology — how nodes discover each other
+#
+# Epmd strategy: reliable on any host, just list the known peers.
+# For LAN/multicast environments, swap to Cluster.Strategy.Gossip.
 config :keyring, :cluster_topologies, [
   keyring: [
-    strategy: Cluster.Strategy.Gossip,
+    strategy: Cluster.Strategy.Epmd,
     config: [
-      port: 45892,
-      if_addr: "0.0.0.0",
-      multicast_if: "0.0.0.0",
-      multicast_addr: "230.1.1.251",
-      multicast_ttl: 1
+      hosts: [
+        :"keyring1@127.0.0.1",
+        :"keyring2@127.0.0.1"
+      ]
     ]
   ]
 ]
